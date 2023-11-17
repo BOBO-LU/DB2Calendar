@@ -1,7 +1,44 @@
 from __future__ import print_function
-import google.auth
+
+import loguru
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+
+
+def copy_and_rename_sheet(spreadsheet_id, source_sheet_id, new_sheet_name, credentials):
+    service = build("sheets", "v4", credentials=credentials)
+
+    # Copy the sheet
+    copy_request = {
+        "destinationSpreadsheetId": spreadsheet_id  # Same spreadsheet, but you can specify another if desired
+    }
+    response = (
+        service.spreadsheets()
+        .sheets()
+        .copyTo(
+            spreadsheetId=spreadsheet_id, sheetId=source_sheet_id, body=copy_request
+        )
+        .execute()
+    )
+
+    copied_sheet_id = response["sheetId"]
+
+    # Rename the copied sheet
+    rename_request = {
+        "requests": [
+            {
+                "updateSheetProperties": {
+                    "properties": {"sheetId": copied_sheet_id, "title": new_sheet_name},
+                    "fields": "title",
+                }
+            }
+        ]
+    }
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id, body=rename_request
+    ).execute()
+
+    return copied_sheet_id  # Returns the sheetId of the newly copied and renamed sheet
 
 
 def get_sheet_id_by_name(spreadsheet_id, sheet_name, credentials):
@@ -15,20 +52,22 @@ def get_sheet_id_by_name(spreadsheet_id, sheet_name, credentials):
     Returns:
         int: The sheetId of the sheet. None if the sheet name doesn't exist.
     """
-    service = build('sheets', 'v4', credentials=credentials)
+    service = build("sheets", "v4", credentials=credentials)
 
     # Fetch the spreadsheet details
-    spreadsheet_metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-    sheets = spreadsheet_metadata.get('sheets', '')
+    spreadsheet_metadata = (
+        service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    )
+    sheets = spreadsheet_metadata.get("sheets", "")
 
     # Iterate over sheets to find the matching sheet name and return its sheetId
     for sheet in sheets:
-        if sheet['properties']['title'] == sheet_name:
-            return sheet['properties']['sheetId']
+        if sheet["properties"]["title"] == sheet_name:
+            return sheet["properties"]["sheetId"]
     return None
 
 
-def append_rows(spreadsheet_id, sheet_id, creds, length):
+def append_rows(spreadsheet_id, sheet_id, length, creds):
     """Append empty rows to a specific sheet.
 
     Args:
@@ -37,28 +76,30 @@ def append_rows(spreadsheet_id, sheet_id, creds, length):
         num_rows (int): The number of rows to append.
         credentials (object): OAuth2 credentials for accessing the API.
     """
-    
-    service = build('sheets', 'v4', credentials=creds)
+
+    service = build("sheets", "v4", credentials=creds)
 
     # Prepare the request body
     body = {
-        'requests': [{
-            'appendDimension': {
-                'sheetId': sheet_id,
-                'dimension': 'ROWS',
-                'length': length
+        "requests": [
+            {
+                "appendDimension": {
+                    "sheetId": sheet_id,
+                    "dimension": "ROWS",
+                    "length": length,
+                }
             }
-        }]
+        ]
     }
 
     # Make the request to append the rows
-    response = service.spreadsheets().batchUpdate(
-        spreadsheetId=spreadsheet_id,
-        body=body
-    ).execute()
+    response = (
+        service.spreadsheets()
+        .batchUpdate(spreadsheetId=spreadsheet_id, body=body)
+        .execute()
+    )
 
     return response
-
 
 
 def delete_rows(spreadsheet_id, sheet_id, start_row, end_row, credentials):
@@ -71,137 +112,140 @@ def delete_rows(spreadsheet_id, sheet_id, start_row, end_row, credentials):
         end_row (int): The end row index to delete (0-based).
         credentials (object): OAuth2 credentials for accessing the API.
     """
-    service = build('sheets', 'v4', credentials=credentials)
+    service = build("sheets", "v4", credentials=credentials)
 
     # Create the delete request
     body = {
-        'requests': [{
-            'deleteDimension': {
-                'range': {
-                    'sheetId': sheet_id,
-                    'dimension': 'ROWS',
-                    'startIndex': start_row,
-                    'endIndex': end_row + 1
+        "requests": [
+            {
+                "deleteDimension": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "dimension": "ROWS",
+                        "startIndex": start_row,
+                        "endIndex": end_row + 1,
+                    }
                 }
             }
-        }]
+        ]
     }
 
     # Send the delete request
-    response = service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
-    print(f"Deleted rows from {start_row} to {end_row} in {sheet_name}.")
+    response = (
+        service.spreadsheets()
+        .batchUpdate(spreadsheetId=spreadsheet_id, body=body)
+        .execute()
+    )
+    loguru.logger.info(f"Deleted rows from {start_row} to {end_row} in {sheet_id}.")
     return response
 
-    
 
 def create_sheet(spreadsheet_id, sheet_name, creds):
-    service = build('sheets', 'v4', credentials=creds)
+    service = build("sheets", "v4", credentials=creds)
 
     # Request body for adding a new sheet
-    body = {
-        'requests': [{
-            'addSheet': {
-                'properties': {
-                    'title': sheet_name
-                }
-            }
-        }]
-    }
+    body = {"requests": [{"addSheet": {"properties": {"title": sheet_name}}}]}
 
     # Make the request to add the new sheet
-    response = service.spreadsheets().batchUpdate(
-        spreadsheetId=spreadsheet_id,
-        body=body
-    ).execute()
+    response = (
+        service.spreadsheets()
+        .batchUpdate(spreadsheetId=spreadsheet_id, body=body)
+        .execute()
+    )
 
     return response
 
 
 def sheet_exists(spreadsheet_id, sheet_name, creds):
-    service = build('sheets', 'v4', credentials=creds)
+    service = build("sheets", "v4", credentials=creds)
 
     # Fetch the spreadsheet details
-    spreadsheet = service.spreadsheets().get(
-        spreadsheetId=spreadsheet_id).execute()
+    spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
 
     # Check for the existence of the sheet by its name
-    for sheet in spreadsheet.get('sheets', []):
-        if sheet['properties']['title'] == sheet_name:
+    for sheet in spreadsheet.get("sheets", []):
+        if sheet["properties"]["title"] == sheet_name:
             return True
     return False
 
 
 def get_values(spreadsheet_id, range_name, creds):
-
     try:
-        service = build('sheets', 'v4', credentials=creds)
+        service = build("sheets", "v4", credentials=creds)
 
-        result = service.spreadsheets().values().get(
-            spreadsheetId=spreadsheet_id, range=range_name).execute()
-        rows = result.get('values', [])
-        print(f"{len(rows)} rows retrieved by get_values.")
-        # print(rows)
+        result = (
+            service.spreadsheets()
+            .values()
+            .get(spreadsheetId=spreadsheet_id, range=range_name)
+            .execute()
+        )
+        rows = result.get("values", [])
+        loguru.logger.info(f"{len(rows)} rows retrieved by get_values.")
         return result
     except HttpError as error:
-        print(f"An error occurred: {error}")
+        loguru.logger.error(f"An error occurred: {error}")
         return error
 
 
 def batch_get_values(spreadsheet_id, range_names, creds):
-
     try:
-        service = build('sheets', 'v4', credentials=creds)
+        service = build("sheets", "v4", credentials=creds)
 
-        result = service.spreadsheets().values().batchGet(
-            spreadsheetId=spreadsheet_id, ranges=range_names).execute()
-        ranges = result.get('valueRanges', [])
-        print(f"{len(ranges)} ranges retrieved by batch_get_values.")
+        result = (
+            service.spreadsheets()
+            .values()
+            .batchGet(spreadsheetId=spreadsheet_id, ranges=range_names)
+            .execute()
+        )
+        ranges = result.get("valueRanges", [])
+        loguru.logger.info(f"{len(ranges)} ranges retrieved by batch_get_values.")
         return result
     except HttpError as error:
-        print(f"An error occurred: {error}")
+        loguru.logger.error(f"An error occurred: {error}")
         return error
 
 
-def update_values(spreadsheet_id, range_name, values,
-                  value_input_option, creds):
+def update_values(spreadsheet_id, range_name, values, value_input_option, creds):
     try:
-        service = build('sheets', 'v4', credentials=creds)
+        service = build("sheets", "v4", credentials=creds)
 
-        body = {
-            'values': values
-        }
-        result = service.spreadsheets().values().update(
-            spreadsheetId=spreadsheet_id, range=range_name,
-            valueInputOption=value_input_option, body=body).execute()
-        print(f"{result.get('updatedCells')} cells updated.")
+        body = {"values": values}
+        result = (
+            service.spreadsheets()
+            .values()
+            .update(
+                spreadsheetId=spreadsheet_id,
+                range=range_name,
+                valueInputOption=value_input_option,
+                body=body,
+            )
+            .execute()
+        )
+        loguru.logger.info(f"{result.get('updatedCells')} cells updated.")
         return result
     except HttpError as error:
-        print(f"An error occurred: {error}")
+        loguru.logger.error(f"An error occurred: {error}")
         return error
 
 
-def batch_update_values(spreadsheet_id, range_name, values,
-                        value_input_option, creds):
-
+def batch_update_values(spreadsheet_id, range_name, values, value_input_option, creds):
     # pylint: disable=maybe-no-member
     try:
-        service = build('sheets', 'v4', credentials=creds)
+        service = build("sheets", "v4", credentials=creds)
 
         data = [
-            {
-                'range': range_name,
-                'values': values
-            },
+            {"range": range_name, "values": values},
             # Additional ranges to update ...
         ]
-        body = {
-            'valueInputOption': value_input_option,
-            'data': data
-        }
-        result = service.spreadsheets().values().batchUpdate(
-            spreadsheetId=spreadsheet_id, body=body).execute()
-        print(f"{(result.get('totalUpdatedCells'))} cells updated.")
+        body = {"valueInputOption": value_input_option, "data": data}
+        result = (
+            service.spreadsheets()
+            .values()
+            .batchUpdate(spreadsheetId=spreadsheet_id, body=body)
+            .execute()
+        )
+        loguru.logger.info(f"{(result.get('totalUpdatedCells'))} cells updated.")
         return result
     except HttpError as error:
-        print(f"An error occurred: {error}")
+        loguru.logger.error(f"An error occurred: {error}")
         return error
