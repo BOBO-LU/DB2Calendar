@@ -6,28 +6,34 @@ from dbfread import DBF
 
 import config
 
-
+from loguru import logger
 def get_data_from_dbf(dbf_path):
     if config.TEST is True:
         # read data_list.txt
-        with open("./data/data_list.txt", "r") as f:
+        with open(r"D:\行事曆同步\schk_pin.dbf", "r") as f:
             data_list = eval(f.read())
         return data_list
 
     data_list = []
     # Load the DBF file
     table = DBF(dbf_path)
-
+    # for record in table:
+    #     print(record)
+    #     print("*"*10)
     # Print the records
     for record in table:
-        # print(record)
+        if record["JSON"] is None:
+            continue
+        # print("record: ", record)
         data_str = record["JSON"]
+        
         data_str = data_str.strip().replace(" ", "")
-        # print(data_str)
-        chunks = data_str.split("\r\n\r\n")
-        # print(chunks)
+        # print("data_str: ", data_str)
+        chunks = data_str.split("}")
+        
+        # print("chunks: ", chunks)
         # Parsing the first JSON string
-        dict1 = json.loads(chunks[0])
+        dict1 = json.loads(chunks[0] + "}")
 
         # if appointmenttime or expectFinishedTime is not exist, skip this record
         if (
@@ -54,8 +60,13 @@ def get_data_from_dbf(dbf_path):
             "calendar"
         ] = f"{dict1['id']}\n{dict1['name']}\n{dict1['phone']}\n{dict1['note']}"
 
+        logger.debug(dict1)
+        # if not in dental opening time, skip
+        if appointStr.hour < 10:
+            logger.debug(f"appointment not in opening times")
+            continue
         # Printing the results
-        # print(dict1)
+
         # for k, v in dict1.items():
         #     print(k, v)
         # print("*" * 20)
@@ -66,8 +77,8 @@ def get_data_from_dbf(dbf_path):
     # write data_list to txt
     # with open("data_list.txt", "w") as f:
     #     f.write(str(data_list))
-    # return data_list
+    return data_list
 
 
 if __name__ == "__main__":
-    get_data_from_dbf("./data/sch_pin.DBF")
+    get_data_from_dbf("D:\行事曆同步\schk_pin.dbf")

@@ -1,7 +1,7 @@
-import datetime
+﻿import datetime
 
 import gspread
-import loguru
+from loguru import logger
 from oauth2client.service_account import ServiceAccountCredentials
 
 import config
@@ -23,6 +23,7 @@ scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive",
 ]
+print("config.keyfile", config.keyfile)
 credentials = ServiceAccountCredentials.from_json_keyfile_name(config.keyfile, scope)
 client = gspread.authorize(credentials)
 
@@ -31,11 +32,11 @@ sheet_name = config.sheet_name
 sheet_id = config.sheet_id  # means spreadsheet_id in google api
 
 # path
-dbf_path = "sch_pin.DBF"
+dbf_path = r"D:\行事曆同步\schk_pin.dbf"
 
 
 def sync_process():
-    print("start update calandar")
+    logger.info("start update calandar")
 
     # read data
     record_list = get_data_from_dbf(dbf_path)
@@ -45,7 +46,7 @@ def sync_process():
 
     # iterate each doctor
     for doctor_name in record_dict.keys():
-        print(f"start process doctor: {doctor_name}")
+        logger.info(f"start process doctor: {doctor_name}")
         try:
             # find the sheet to update. if sheet not exist, create sheet
             if sheet_exists(sheet_id, doctor_name, credentials) is False:
@@ -70,11 +71,13 @@ def sync_process():
             # TODO: find difference
 
             # itearte each data
+            logger.info(f"record_dict[{doctor_name}]: {record_dict[doctor_name]}")
             for row in record_dict[doctor_name]:
-                print("row: ", row)
+                logger.info(f"row: {row}" )
+                startTime = row
                 # find the row, column to update
                 range_str = get_range_by_data(row, date_list)
-                print(f"range: {doctor_name}!{range_str}")
+                logger.info(f"range: {doctor_name}!{range_str}")
                 # parse the data and update the row
                 result = update_values(
                     sheet_id,
@@ -83,15 +86,16 @@ def sync_process():
                     "USER_ENTERED",
                     credentials,
                 )
-                print(result)
+                logger.info(result)
 
         except Exception as e:
-            loguru.logger.error(getexception(e))
+            logger.error(getexception(e))
 
 
 def agg_data_by_doctor(data_list):
     record_dict = {}
     for data in data_list:
+        logger.debug(data)
         if (data["doctor"] in record_dict.keys()) is False:
             record_dict[data["doctor"]] = []
 
@@ -115,25 +119,31 @@ def get_range_by_data(record: dict, date_list: list) -> str:
     start_time = record["starttimeStr"].split(" ")[1]
     end_time = record["finishtimeStr"].split(" ")[1]
     range = "B2:B2"
+    
     # TODO: detect outlier, the time should only locate between 10am to 10pm
-    if start_date != end_date:
-        # start date is not the same as end date, need to update multiple rows
-        pass
-    else:
-        # start date is the same as end date, only need to update one row
-        # plus 2 because the first row is doctor name, and it starts from index 1
-        # print(date_list)
-        row = date_list.index(start_date) + 2
+    logger.info(f"{start_date}, {end_date}, {start_time}, {end_time}")
+    
+    # TODO: check start date is not the same as end date, need to update multiple rows
 
-        # find the column for start
-        col_int = get_time_index(start_time) + 2
-        col_start = index_to_excel_column(col_int)
+    # start date is the same as end date, only need to update one row
+    # plus 2 because the first row is doctor name, and it starts from index 1
+    # logger.info(date_list)
+    row = date_list.index(start_date) + 2
 
-        # find the column for end
-        col_int = get_time_index(end_time) + 2
-        col_end = index_to_excel_column(col_int)
+    logger.debug("find column start")
+    # find the column for start
+    col_int = get_time_index(start_time) + 2
+    print(col_int)
+    col_start = index_to_excel_column(col_int)
 
-        range = col_start + str(row) + ":" + col_end + str(row)
+    logger.debug("find column end")
+    # find the column for end
+    col_int = get_time_index(end_time) + 2
+    col_end = index_to_excel_column(col_int)
+
+    
+    range = col_start + str(row) + ":" + col_end + str(row)
+    logger.debug(f"get range: {range}")
     return range
 
 
@@ -158,6 +168,7 @@ def index_to_excel_column(index) -> str:
     index += 1
     column = ""
     while index:
+        logger.debug(index)
         index, remainder = divmod(index - 1, 26)
         column = chr(65 + remainder) + column
     return column
@@ -173,7 +184,7 @@ def rotate_calandar(sheet_id, doctor_name, doctor_sheet_id):
     if last_date_index == -1:
         return
 
-    print("last_date_index: ", last_date_index)
+    logger.info("last_date_index: ", last_date_index)
     # 1 to 4 means delete B:D
     delete_rows(sheet_id, doctor_sheet_id, 1, last_date_index, credentials)
     append_rows(sheet_id, doctor_sheet_id, last_date_index, credentials)
@@ -224,19 +235,20 @@ if __name__ == "__main__":
     # value = batch_get_values(sheet_id, ["sheet1!A1:C2", "sheet1!A5:C6"], credentials)
     # print(value)
 
-    print(get_sheet_id_by_name(sheet_id, "黃嫣", credentials))
-    # copy_and_rename_sheet(sheet_id, 1872246998, '範例2', credentials)
-    # print(search_idx_before_today(get_all_date_by_doctor("林靜妤")))
-    # # Pass: spreadsheet_id, range_name value_input_option and _values)
-    batch_update_values(
-        sheet_id, "李融!AS41:AT42", [["F", "B"], ["C", "D"]], "USER_ENTERED", credentials
-    )
+    # print(get_sheet_id_by_name(sheet_id, "黃嫣", credentials))
+    # # copy_and_rename_sheet(sheet_id, 1872246998, '範例2', credentials)
+    # # print(search_idx_before_today(get_all_date_by_doctor("林靜妤")))
+    # # # Pass: spreadsheet_id, range_name value_input_option and _values)
+    # batch_update_values(
+    #     sheet_id, "李融!AS41:AT42", [["F", "B"], ["C", "D"]], "USER_ENTERED", credentials
+    # )
 
-    # # Pass: spreadsheet_id,  range_name, value_input_option and  _values
-    update_values(
-        sheet_id,
-        "黃嫣!B5:D6",
-        [["A\nA\nA", "B"], ["C", "D"]],
-        "USER_ENTERED",
-        credentials,
-    )
+    # # # Pass: spreadsheet_id,  range_name, value_input_option and  _values
+    # update_values(
+    #     sheet_id,
+    #     "黃嫣!B5:D6",
+    #     [["A\nA\nA", "B"], ["C", "D"]],
+    #     "USER_ENTERED",
+    #     credentials,
+    # )
+    sync_process()
