@@ -1,5 +1,5 @@
 ﻿import datetime
-
+from itertools import chain
 import gspread
 from loguru import logger
 from oauth2client.service_account import ServiceAccountCredentials
@@ -35,7 +35,7 @@ dbf_path = r"D:\行事曆同步\schk_pin.dbf"
 
 
 def sync_process():
-    logger.info("start update calandar")
+    logger.info("start update calendar")
 
     # read data
     record_list = get_data_from_dbf(dbf_path)
@@ -58,20 +58,26 @@ def sync_process():
             # means sheet_id in google api
             doctor_sheet_id = get_sheet_id_by_name(sheet_id, doctor_name, credentials)
 
-            # rotate calandar
-            rotate_calandar(sheet_id, doctor_name, doctor_sheet_id)
+            # rotate calendar
+            rotate_calendar(sheet_id, doctor_name, doctor_sheet_id)
 
             date_list = get_all_date_by_doctor(doctor_name)
 
-            # get calandar data
-            # TODO: get calandar data ( assumed the data on the sheet is the calandar data)
-            calandar_data = get_values(sheet_id, f"{doctor_name}!B2:AX", credentials)
+            # get calendar data (assumed the data on the sheet is the calendar data)
+            calendar_data = get_values(sheet_id, f"{doctor_name}!B2:AX", credentials)
+            logger.debug(f"calendar_data: {calendar_data}")
+
+            # get unique calendar data
+            unique_calendar_content = set(list(chain(*calendar_data["values"])))
+            logger.debug(f"unique_calendar_content : {unique_calendar_content }")
 
             # itearte each data
-            logger.info(f"record_dict[{doctor_name}]: {record_dict[doctor_name]}")
+            # logger.info(f"record_dict[{doctor_name}]: {record_dict[doctor_name]}")
+            
             for row in record_dict[doctor_name]:
                 # if the data already exists in calander_data, skip it
-                if row["calendar"] in calandar_data.get("values", []):
+                logger.debug(f"iter row: {row}")
+                if row["calendar"] in unique_calendar_content:
                     logger.info(f"skip row: {row}")
                     continue
 
@@ -107,7 +113,7 @@ def agg_data_by_doctor(data_list):
 
 
 def get_all_date_by_doctor(doctor_name):
-    # get date range list from calandar
+    # get date range list from calendar
     result = get_values(sheet_id, f"{doctor_name}!A:A", credentials)
     date_list = []
     for date in result.get("values", []):
@@ -176,7 +182,7 @@ def index_to_excel_column(index) -> str:
     return column
 
 
-def rotate_calandar(sheet_id, doctor_name, doctor_sheet_id):
+def rotate_calendar(sheet_id, doctor_name, doctor_sheet_id):
     # delete rows and add new rows to the end
     date_list = get_all_date_by_doctor(
         doctor_name,
@@ -191,7 +197,7 @@ def rotate_calandar(sheet_id, doctor_name, doctor_sheet_id):
     delete_rows(sheet_id, doctor_sheet_id, 1, last_date_index, credentials)
     append_rows(sheet_id, doctor_sheet_id, last_date_index, credentials)
 
-    # get last date in calandar list, and update gsheet (last_date_index - 1) days after it
+    # get last date in calendar list, and update gsheet (last_date_index - 1) days after it
     last_date = datetime.datetime.strptime(date_list[-1], "%Y-%m-%d")
     new_dates = [
         (last_date + datetime.timedelta(days=i)).strftime("%Y-%m-%d")
