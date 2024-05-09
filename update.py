@@ -7,7 +7,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 import config
 from sheet_operation import (
     append_rows,
-    batch_update_values,
     copy_and_rename_sheet,
     delete_rows,
     get_sheet_id_by_name,
@@ -65,19 +64,23 @@ def sync_process():
             date_list = get_all_date_by_doctor(doctor_name)
 
             # get calandar data
-            # TODO: get calandar data
-
-            # find difference between data and calandar
-            # TODO: find difference
+            # TODO: get calandar data ( assumed the data on the sheet is the calandar data)
+            calandar_data = get_values(sheet_id, f"{doctor_name}!B2:AX", credentials)
 
             # itearte each data
             logger.info(f"record_dict[{doctor_name}]: {record_dict[doctor_name]}")
             for row in record_dict[doctor_name]:
-                logger.info(f"row: {row}" )
-                startTime = row
+                # if the data already exists in calander_data, skip it
+                if row["calendar"] in calandar_data.get("values", []):
+                    logger.info(f"skip row: {row}")
+                    continue
+
+                logger.info(f"row: {row}")
+
                 # find the row, column to update
                 range_str = get_range_by_data(row, date_list)
                 logger.info(f"range: {doctor_name}!{range_str}")
+
                 # parse the data and update the row
                 result = update_values(
                     sheet_id,
@@ -119,10 +122,10 @@ def get_range_by_data(record: dict, date_list: list) -> str:
     start_time = record["starttimeStr"].split(" ")[1]
     end_time = record["finishtimeStr"].split(" ")[1]
     range = "B2:B2"
-    
+
     # TODO: detect outlier, the time should only locate between 10am to 10pm
     logger.info(f"{start_date}, {end_date}, {start_time}, {end_time}")
-    
+
     # TODO: check start date is not the same as end date, need to update multiple rows
 
     # start date is the same as end date, only need to update one row
@@ -141,7 +144,6 @@ def get_range_by_data(record: dict, date_list: list) -> str:
     col_int = get_time_index(end_time) + 2
     col_end = index_to_excel_column(col_int)
 
-    
     range = col_start + str(row) + ":" + col_end + str(row)
     logger.debug(f"get range: {range}")
     return range
